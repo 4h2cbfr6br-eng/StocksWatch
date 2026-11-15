@@ -1,0 +1,8 @@
+pandas
+pyarrow
+duckdb
+yfinance
+requests
+python-dotenv
+pytest
+pywebpush

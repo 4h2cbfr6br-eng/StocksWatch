@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StocksWatch Push Test</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#151E33">
+<style>
+  body { background:#F8ECDF; color:#1E1A17; font-family:-apple-system, Helvetica, Arial, sans-serif;
+         margin:0; padding:24px 20px 40px; }
+  .wrap { max-width:520px; margin:0 auto; }
+  .mast { font-family:Georgia, 'Times New Roman', serif; font-size:34px; font-weight:700; text-align:center;
+          padding-bottom:14px; border-bottom:1px solid rgba(30,26,23,.2); }
+  .label { color:#8A1C3C; font-weight:600; margin-top:22px; }
+  h1 { font-family:Georgia, 'Times New Roman', serif; font-weight:500; font-size:28px; margin:6px 0 10px; }
+  p { color:#6B625B; line-height:1.5; }
+  ol { padding-left:20px; line-height:1.6; }
+  button { display:block; width:100%; font-size:17px; font-weight:600; padding:14px; margin:12px 0;
+           border:0; background:#1E1A17; color:#F8ECDF; }
+  button:disabled { background:#B9ADA1; }
+  #status { border-top:1px dotted rgba(30,26,23,.35); padding-top:14px; margin-top:18px; color:#1E1A17;
+            white-space:pre-wrap; word-break:break-word; }
+  #install { display:none; border:1px solid rgba(30,26,23,.2); padding:4px 14px; margin-top:16px; }
+</style>
+</head>
+<body><div class="wrap">
+  <div class="mast">StocksWatch</div>
+  <div class="label">Phase 0</div>
+  <h1>Push notification test</h1>
+  <p>Checks that an alert can reach this device for free, with no App Store app.</p>
+
+  <div id="install">
+    <p><b>On iPhone, install this page first:</b></p>
+    <ol>
+      <li>Tap the Share button in Safari.</li>
+      <li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+      <li>Open <b>StocksWatch</b> from the Home Screen icon.</li>
+    </ol>
+  </div>
+
+  <button id="enable">1. Enable notifications</button>
+  <button id="send" disabled>2. Send me a test alert</button>
+  <div id="status">Checking this device…</div>
+</div>
+
+<script>
+const statusBox = document.getElementById('status');
+const enableBtn = document.getElementById('enable');
+const sendBtn = document.getElementById('send');
+const say = (text) => { statusBox.textContent = text; };
+
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const installed = window.navigator.standalone === true ||
+                  window.matchMedia('(display-mode: standalone)').matches;
+
+function keyToBytes(text) {
+  const padded = (text + '='.repeat((4 - text.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+}
+
+async function start() {
+  if (isIOS && !installed) {
+    document.getElementById('install').style.display = 'block';
+    enableBtn.disabled = true;
+    return say('Not installed yet. Follow the three steps above, then open the app from its icon.');
+  }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    enableBtn.disabled = true;
+    return say('This browser does not support web push.');
+  }
+  await navigator.serviceWorker.register('/sw.js');
+  const registration = await navigator.serviceWorker.ready;
+  const existing = await registration.pushManager.getSubscription();
+  if (existing && Notification.permission === 'granted') {
+    await save(existing);
+    sendBtn.disabled = false;
+    return say('Notifications are already enabled on this device. Press button 2.');
+  }
+  say('Ready. Press button 1.');
+}
+
+async function save(subscription) {
+  const reply = await fetch('/subscribe', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(subscription),
+  });
+  if (!reply.ok) throw new Error('Server refused the subscription (' + reply.status + ')');
+}
+
+enableBtn.addEventListener('click', async () => {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      return say('Permission was not granted (' + permission + '). Allow notifications for StocksWatch in Settings, then try again.');
+    }
+    const registration = await navigator.serviceWorker.ready;
+    const { key } = await (await fetch('/vapid-public-key')).json();
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true, applicationServerKey: keyToBytes(key),
+    });
+    await save(subscription);
+    sendBtn.disabled = false;
+    say('Enabled. This device is registered with ' + new URL(subscription.endpoint).host + '.\nNow press button 2.');
+  } catch (error) {
+    say('Could not enable notifications: ' + error.message);
+  }
+});
+
+sendBtn.addEventListener('click', async () => {
+  try {
+    say('Sending…');
+    const { results } = await (await fetch('/send', { method: 'POST', body: '{}' })).json();
+    if (!results.length) return say('No devices are registered. Press button 1 first.');
+    say(results.map((r) => r.ok
+      ? 'Sent via ' + r.service + ' (accepted, code ' + r.status + '). The notification should appear within a few seconds. Lock the phone or switch apps to see it as a banner.'
+      : 'Failed via ' + r.service + ' (code ' + r.status + '): ' + (r.detail || '')).join('\n'));
+  } catch (error) {
+    say('Could not send: ' + error.message);
+  }
+});
+
+start().catch((error) => say('Setup problem: ' + error.message));
+</script>
+</body>
+</html>

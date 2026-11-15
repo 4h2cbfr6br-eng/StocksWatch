@@ -1,0 +1,11 @@
+# Secrets: never commit API keys (this repo will be public)
+.env
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Downloaded data and generated pages
+data/
+out/
