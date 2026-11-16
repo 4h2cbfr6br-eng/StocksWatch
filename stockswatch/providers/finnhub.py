@@ -29,6 +29,16 @@ class FinnhubProvider:
         except (requests.RequestException, ValueError):
             return {}  # a missing number must not stop the run
 
+    def get_symbol_types(self) -> Dict[str, str]:
+        """Security type for every US symbol, e.g. "Common Stock", "ETP", "ADR". One call."""
+        try:
+            response = requests.get(BASE_URL + "/stock/symbol",
+                                    params={"exchange": "US", "token": self._key}, timeout=120)
+            response.raise_for_status()
+            return {item["symbol"]: item.get("type") or "" for item in response.json()}
+        except (requests.RequestException, ValueError):
+            return {}
+
     def get_fundamentals(self, symbols: Sequence[str]) -> Dict[str, dict]:
         out: Dict[str, dict] = {}
         for symbol in symbols:

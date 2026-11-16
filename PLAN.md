@@ -202,6 +202,33 @@ Every suppressed candidate is logged with its reason, so you can audit what the 
   - *Honesty:* falls after bad results often keep drifting down. The backtest is there to show this, not to prove dips are bargains.
 - **Use:** results are for tuning thresholds privately. They are never shown to users as evidence that buying drops works (see section 10).
 
+### 7.1 First backtest results (16 Nov 2026)
+
+Data: 2,884 US stocks still listed today, daily bars Oct 2018 to Nov 2026 (Alpaca). Tuned on 2020-2023, checked on 2024 onwards. Full output: `out/backtest.txt` (re-create with `python -m stockswatch backtest`). Company size is approximated by money traded per day, because free data has no historical market cap.
+
+**Finding 1: the default rule is too noisy with the default filters.**
+
+| Rule A (−5%, 3× normal, 3 pts worse than index, volume 1.5×) | Alerts per day 2020-23 (average / typical / busy day) | Alerts per day 2024+ | Days with more than 5 (2024+) |
+|---|---|---|---|
+| Stocks trading ≥ $20m a day (plan default) | 7.5 / 3 / 26 | 12.1 / 7 / 39 | 61% |
+| ≥ $100m a day | 3.2 / 1 / 11 | 5.8 / 3 / 18 | 30% |
+| ≥ $250m a day | 1.5 / 1 / 5 | 3.0 / 2 / 9 | 12% |
+| ≥ $500m a day | 0.7 / 0 / 3 | 1.5 / 1 / 5 | 4% |
+
+The target was 1-5 a day. Raising the % threshold helps less than raising the size filter (−7% at ≥ $20m still averages 8.9 a day in 2024+).
+
+**Finding 2: market-wide sell-offs swamp everything.** The busiest days were 12 Mar 2020 (285 alerts, index −6.9%) and 3 Apr 2025 (270 alerts, index −4.9%). The "3 points worse than the index" check alone does not stop this; sell-off mode (section 5) is essential.
+
+**Finding 3: a big fall, on its own, told you nothing about what came next.** Twenty days after a Rule A alert the median stock was up about 1%, which is 0.7 points *behind* the index in both periods, almost identical to picking any stock on any day (0.5-0.9 behind). About half went up and half went down. One alert in twenty was down a further 19-29% a month later. This is with survivorship bias flattering the numbers. It supports the plan's stance: alerts are information, and the wording must never imply a fall is a bargain.
+
+**Finding 4: intraday scanning will fire about twice as often.** Only half of the stock-days that touched −5% during the day also closed that low.
+
+**Decision taken into Phase 1 (agreed 16 Nov 2026):**
+- **Push notifications:** Rule A, only for stocks trading ≥ $250m a day (roughly the largest 300-400 US companies), plus the daily cap of 5. About 1-3 a day.
+- **Front page only (no push):** everything else that passes Rule A at ≥ $20m a day.
+- **Sell-off mode** is built in Phase 1, not deferred.
+- Watchlist alerts are unaffected: your own stocks, your own thresholds.
+
 ---
 
 ## 8. Architecture

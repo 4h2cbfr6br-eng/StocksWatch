@@ -3,6 +3,10 @@
     python -m stockswatch run      download prices, then show the report
     python -m stockswatch update   download prices only
     python -m stockswatch report   show the report from prices already downloaded
+
+    python -m stockswatch backtest-data   download whole-US-market history (once)
+    python -m stockswatch backtest        replay the rules over that history
+    python -m stockswatch scan            scan the whole US market right now
 """
 from __future__ import annotations
 
@@ -36,10 +40,47 @@ def do_report() -> None:
     print(report.DISCLAIMER)
 
 
+def do_backtest_data() -> None:
+    from . import universe
+    print("Building the list of US stocks...")
+    stocks = universe.build()
+    print("  %d stocks in the wide universe" % len(stocks))
+    print("Downloading daily prices since %s (several minutes; safe to stop and re-run)..."
+          % config.BACKTEST_START)
+    rows = universe.download_history()
+    print("Done. %d new rows saved under %s" % (rows, config.US_BARS_DIR.relative_to(config.ROOT)))
+
+
+def do_backtest() -> None:
+    from . import backtest
+    print("Loading price history...")
+    panel = backtest.build_panel(backtest.load_us_bars())
+    text = backtest.run(panel)
+    config.OUT_DIR.mkdir(exist_ok=True)
+    config.BACKTEST_REPORT.write_text(text, encoding="utf-8")
+    print(text)
+    print("Saved to %s" % config.BACKTEST_REPORT.relative_to(config.ROOT))
+
+
+def do_scan() -> None:
+    from . import scanner
+    print("Scanning the US market...")
+    print(scanner.to_text(scanner.scan()))
+    print()
+    print(report.DISCLAIMER)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="stockswatch", description="Watchlist drop report")
-    parser.add_argument("command", choices=["run", "update", "report"], nargs="?", default="run")
+    parser.add_argument("command", nargs="?", default="run",
+                        choices=["run", "update", "report", "backtest-data", "backtest", "scan"])
     command = parser.parse_args().command
+    if command == "scan":
+        return do_scan()
+    if command == "backtest-data":
+        return do_backtest_data()
+    if command == "backtest":
+        return do_backtest()
     if command in ("run", "update"):
         do_update()
     if command in ("run", "report"):

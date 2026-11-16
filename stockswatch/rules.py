@@ -11,6 +11,9 @@ import statistics
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+
 # --- Defaults from PLAN.md section 4 -----------------------------------------
 
 SIGMA_WINDOW = 60          # trading days of history used for "normal" volatility
@@ -27,6 +30,16 @@ WATCHLIST_THRESHOLD_Z = -2.5
 MARKET_MIN_DROP_PCT = -5.0
 MARKET_MIN_Z = -3.0
 MARKET_MIN_VS_INDEX = -3.0  # percentage points worse than the index
+MARKET_MIN_REL_VOLUME = 1.5 # trading at least 1.5x its normal volume
+
+# Noise filters (PLAN.md 4.3) and the push limit agreed after the first backtest (7.1).
+MIN_PRICE = 5.0                          # previous close, in dollars
+MIN_DOLLAR_VOLUME = 20_000_000           # average traded per day: shown on the front page
+PUSH_MIN_DOLLAR_VOLUME = 250_000_000     # average traded per day: allowed to buzz the phone
+
+# Sell-off mode: one market-wide alert instead of hundreds.
+SELL_OFF_INDEX_PCT = -3.0
+SELL_OFF_ALERT_COUNT = 25
 
 
 # --- Building blocks ---------------------------------------------------------
@@ -91,6 +104,46 @@ def tier_for(pct: float) -> Optional[str]:
 def looks_like_split(pct: float, tolerance: float = 1.0) -> bool:
     """True when a fall sits suspiciously close to a common split ratio."""
     return any(abs(pct - level) <= tolerance for level in SPLIT_LIKE_DROPS)
+
+
+# --- Whole-table versions (same maths, thousands of rows at once) -------------
+# The backtester checks millions of stock-days, so it needs these fast forms.
+# tests/test_rules.py proves each gives exactly the same answer as the
+# one-at-a-time function above.
+
+def rolling_sigma(returns: np.ndarray, window: int = SIGMA_WINDOW,
+                  floor: float = SIGMA_FLOOR) -> np.ndarray:
+    """For each day, robust_sigma of the `window` returns BEFORE that day.
+
+    Day i uses returns[i-window : i] only, never day i itself or anything
+    later. Days without enough history get NaN.
+    """
+    returns = np.asarray(returns, dtype=float)
+    out = np.full(len(returns), np.nan)
+    if len(returns) <= window:
+        return out
+    windows = sliding_window_view(returns, window)        # windows[j] = returns[j : j+window]
+    median = np.median(windows, axis=1)
+    mad = np.median(np.abs(windows - median[:, None]), axis=1)
+    out[window:] = np.maximum(1.4826 * mad, floor)[:-1]   # NaN in a window stays NaN
+    return out
+
+
+def split_like_mask(pct: np.ndarray, tolerance: float = 1.0) -> np.ndarray:
+    levels = np.array(SPLIT_LIKE_DROPS)
+    return (np.abs(np.asarray(pct, dtype=float)[:, None] - levels) <= tolerance).any(axis=1)
+
+
+def market_rule_mask(pct: np.ndarray, z: np.ndarray, vs_index: np.ndarray,
+                     min_drop_pct: float = MARKET_MIN_DROP_PCT,
+                     min_z: float = MARKET_MIN_Z,
+                     min_vs_index: float = MARKET_MIN_VS_INDEX) -> np.ndarray:
+    """True where evaluate_market(...) would alert. Missing values never alert."""
+    pct = np.asarray(pct, dtype=float)
+    with np.errstate(invalid="ignore"):
+        passes = (pct <= min_drop_pct) & (np.asarray(z) <= min_z) & (np.asarray(vs_index) <= min_vs_index)
+        held = (pct <= SUSPECT_DROP_PCT) | split_like_mask(pct)
+    return passes & ~held
 
 
 # --- Verdicts ----------------------------------------------------------------
