@@ -92,3 +92,28 @@ class AlpacaProvider:
             out.update(self._get(DATA_URL + "/v2/stocks/snapshots",
                                  {"symbols": ",".join(symbols[i:i + batch]), "feed": feed}))
         return out
+
+    # --- Splits and dividends -------------------------------------------------
+
+    def get_price_events(self, symbols: Sequence[str], start: date, end: date) -> Dict[str, str]:
+        """Splits and cash payouts with an ex-date in the range: {symbol: description}.
+        On these days the price steps down for a reason that is not news."""
+        if not symbols:
+            return {}
+        found: Dict[str, str] = {}
+        params = {"symbols": ",".join(symbols), "types": "forward_split,reverse_split,cash_dividend",
+                  "start": start.isoformat(), "end": end.isoformat(), "limit": 1000}
+        while True:
+            data = self._get(DATA_URL + "/v1/corporate-actions", params)
+            actions = data.get("corporate_actions") or {}
+            for kind in ("forward_splits", "reverse_splits"):
+                for a in actions.get(kind) or []:
+                    found[a["symbol"]] = "%s-for-%s share split on %s" % (
+                        a.get("new_rate"), a.get("old_rate"), a.get("ex_date"))
+            for a in actions.get("cash_dividends") or []:
+                if a.get("symbol") not in found:
+                    found[a["symbol"]] = "dividend:%s" % a.get("rate")
+            if not data.get("next_page_token"):
+                return found
+            params["page_token"] = data["next_page_token"]
+

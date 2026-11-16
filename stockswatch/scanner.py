@@ -8,7 +8,7 @@ halts, adding news, and sending notifications are separate steps.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import timedelta, date, datetime
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -55,10 +55,12 @@ class ScanResult:
 def compute_stats(before: date) -> pd.DataFrame:
     """Per stock: normal daily move, average volume and 52-week range, using
     only trading days BEFORE `before`."""
-    pattern = str(config.US_BARS_DIR / "*.parquet").replace("'", "''")
+    from . import universe
     bars = duckdb.sql(
-        "SELECT symbol, date, high, low, close, volume FROM read_parquet('%s') "
-        "WHERE close > 0 AND date < DATE '%s' ORDER BY symbol, date" % (pattern, before.isoformat())
+        "SELECT symbol, date, high, low, close, volume FROM %s "
+        "WHERE close > 0 AND date < DATE '%s' AND date >= DATE '%s' ORDER BY symbol, date"
+        % (universe.bars_source(), before.isoformat(),
+           (before - timedelta(days=config.RECENT_DAYS)).isoformat())
     ).df()
     return stats_from_bars(bars)
 

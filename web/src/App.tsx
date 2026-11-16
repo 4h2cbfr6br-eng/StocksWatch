@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import type { Edition } from './data'
 import { loadEdition } from './data'
 import FrontPage from './FrontPage'
+import Notify from './Notify'
 import { Login, MarketPage, StockPage, WatchlistPage } from './pages'
 import { Footer, Masthead, Nav, TickerStrip, readRoute, type Route } from './parts'
 import { PREVIEW, supabase } from './supabase'
@@ -70,6 +71,7 @@ export default function App() {
         onMenu={() => setMenuOpen(!menuOpen)}
       />
       <Nav route={route} edition={edition} open={menuOpen} />
+      {!PREVIEW && route.page === 'front' && <Notify />}
 
       {problem && <div className="wrap problem">Could not load the latest data: {problem}</div>}
       {!edition && !problem && <main className="wrap"><p className="muted pad">Loading today's edition…</p></main>}

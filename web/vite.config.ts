@@ -2,9 +2,9 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // The keys live in the project's .env file, one folder up.
-// Only the URL and the PUBLISHABLE key are ever built into the web app.
+// Only the URL, the PUBLISHABLE key and the PUBLIC notification key are built into the web app.
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, '..', 'SUPABASE_')
+  const env = loadEnv(mode, '..', ['SUPABASE_', 'VAPID_PUBLIC_'])
   const secret = env.SUPABASE_SECRET_KEY
 
   return {
@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => {
     define: {
       __SUPABASE_URL__: JSON.stringify(env.SUPABASE_URL ?? ''),
       __SUPABASE_PUBLISHABLE_KEY__: JSON.stringify(env.SUPABASE_PUBLISHABLE_KEY ?? ''),
+      // The PUBLIC half of the notification key pair. The private half never comes here.
+      __VAPID_PUBLIC_KEY__: JSON.stringify(env.VAPID_PUBLIC_KEY ?? ''),
     },
     server: {
       port: 5173,

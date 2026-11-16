@@ -1,0 +1,53 @@
+# Runs the market scan on GitHub's computers, so nothing needs to stay switched on at home.
+# Every 5 minutes on weekdays across US trading hours (GitHub's timer can run a few minutes late).
+# The keys come from the repository's Secrets, never from the code.
+name: Market scan
+
+on:
+  schedule:
+    - cron: "*/5 13-21 * * 1-5"      # 13:00-21:59 UTC covers the US session in summer and winter
+  workflow_dispatch:                  # adds a "Run workflow" button for running it by hand
+
+concurrency:
+  group: market-scan                  # never two scans at once
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Today's date
+        id: day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      # Price history is downloaded once a day and reused by that day's other runs.
+      - uses: actions/cache@v4
+        with:
+          path: data
+          key: price-history-${{ steps.day.outputs.day }}
+
+      - name: Scan, save and notify
+        run: python -m stockswatch publish
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HEARTBEAT_URL: ${{ secrets.HEARTBEAT_URL }}

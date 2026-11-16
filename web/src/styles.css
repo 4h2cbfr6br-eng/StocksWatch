@@ -126,6 +126,17 @@ small { display: block; color: var(--grey); font-size: 12px; font-weight: 400; }
 .nav-tabs a.active { color: var(--claret); border-bottom-color: var(--claret); }
 .nav-edition { align-self: center; font-size: 13px; color: var(--grey); white-space: nowrap; }
 
+/* --- Notifications strip ------------------------------------------------------ */
+
+.notify { border-bottom: 1px solid var(--hairline); font-size: 14px; }
+.notify-row { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; }
+.notify button:not(.link-button) {
+  border: 0; background: var(--ink); color: var(--paper); font-weight: 600; font-size: 13px; padding: 7px 12px;
+}
+.notify button:disabled { opacity: 0.55; }
+.notify .link-button { text-decoration: underline; text-underline-offset: 3px; color: var(--grey); }
+.notify .error { margin-top: 0; }
+
 /* --- Tags -------------------------------------------------------------------- */
 
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -15,6 +15,8 @@ REPORT_FILE = OUT_DIR / "index.html"
 # Whole-US-market files used by the backtester.
 UNIVERSE_FILE = DATA_DIR / "us_universe.parquet"
 US_BARS_DIR = DATA_DIR / "us_daily"            # one Parquet file per batch of symbols
+US_RECENT_DIR = DATA_DIR / "us_recent"     # the last ~14 months, refreshed daily for the live scan
+RECENT_DAYS = 430
 BACKTEST_START = "2018-10-01"                  # gives a full year of run-in before 2020
 BACKTEST_REPORT = OUT_DIR / "backtest.txt"
 BENCHMARK = "SPY"                              # S&P 500 tracker, used as "the index"

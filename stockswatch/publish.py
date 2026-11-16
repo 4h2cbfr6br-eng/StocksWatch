@@ -6,8 +6,8 @@ One run does, in order: whole-market scan, stock list, each stock's normal
 behaviour, latest quotes, alerts (with news and key numbers), your watchlist
 (US and UK), and the four figures for the top strip.
 
-Still to come in Phase 1: split/halt checks against a calendar, and sending
-notifications. This step only records what the scanner found.
+New alerts are checked against Alpaca's list of share splits and payouts, and
+the run ends by sending notifications (see dispatcher.py).
 """
 from __future__ import annotations
 
@@ -62,11 +62,11 @@ def short_name(name: str) -> str:
 
 def biggest_fall_since(symbol: str, pct: float, before: date) -> Optional[str]:
     """A factual clause for the headline, from our own price history."""
-    pattern = str(config.US_BARS_DIR / "*.parquet").replace("'", "''")
+    from . import universe
     rows = duckdb.sql(
         "SELECT date, (close / lag(close) OVER (ORDER BY date) - 1) * 100 AS pct "
-        "FROM read_parquet('%s') WHERE symbol = '%s' AND date < DATE '%s' ORDER BY date"
-        % (pattern, symbol.replace("'", "''"), before.isoformat())
+        "FROM %s WHERE symbol = '%s' AND date < DATE '%s' ORDER BY date"
+        % (universe.bars_source(long_history=True), symbol.replace("'", "''"), before.isoformat())
     ).df()
     if len(rows) < 250:
         return None
@@ -132,6 +132,29 @@ def _rule_id(db: Db) -> int:
         "push_min_dollar_volume": rules.PUSH_MIN_DOLLAR_VOLUME}}])[0]["id"]
 
 
+def _price_events(symbols: List[str], day: date) -> Dict[str, str]:
+    if not symbols:
+        return {}
+    from . import universe
+    return universe._alpaca().get_price_events(symbols, day - timedelta(days=4), day + timedelta(days=1))
+
+
+def explained_by(event: Optional[str], pct: float, price: float) -> Optional[str]:
+    """Why a fall is not real news, or None if it is not explained."""
+    if not event:
+        return None
+    if not event.startswith("dividend:"):
+        return event
+    try:
+        payout = float(event.split(":", 1)[1])
+    except ValueError:
+        return None
+    prev_close = price / (1 + pct / 100.0)
+    share = payout / prev_close * 100.0
+    # An ordinary dividend is a fraction of a percent. Only a big one explains a fall.
+    return "cash payout of %.1f%% of the share price" % share if share >= 2.0 else None
+
+
 def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now: datetime,
                     stamp: str) -> Dict[str, int]:
     finnhub = FinnhubProvider(os.getenv("FINNHUB_API_KEY") or "")
@@ -144,7 +167,9 @@ def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now
                      if d == day.isoformat() and hour != "amc"            # before or during today's session
                      or d == (day - timedelta(days=1)).isoformat() and hour == "amc"}   # after yesterday's close
     rule_id = _rule_id(db)
-    counts = {"new": 0, "seen_again": 0}
+    counts = {"new": 0, "seen_again": 0, "held": 0}
+    fresh = [c for c in result.alerts if c.symbol in ids and (ids[c.symbol], c.tier) not in existing]
+    events = _price_events([c.symbol for c in fresh], day)
 
     for number, c in enumerate(result.alerts):
         if c.symbol not in ids:
@@ -160,6 +185,16 @@ def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now
                 changes.update(status="confirmed", confirmed_at=stamp)
             db.update("alerts", "id=eq.%d" % old["id"], changes)
             counts["seen_again"] += 1
+            continue
+
+        held_reason = explained_by(events.get(c.symbol), c.pct, c.price)
+        if held_reason:
+            # Not news: the price stepped down because of a split or a payout. Keep a
+            # record (so it can be audited) but never show or send it.
+            db.insert("alerts", [dict(figures, instrument_id=iid, trading_date=day, rule_id=rule_id,
+                                      tier=c.tier, status="held", held_reason=held_reason,
+                                      triggered_at=stamp, data_delay="15 min", push_eligible=False)])
+            counts["held"] += 1
             continue
 
         tags = []
@@ -256,6 +291,10 @@ def publish(now: Optional[datetime] = None, say=print) -> None:
     db = Db()
     run = db.insert("scan_runs", [{"market": "US", "source": "alpaca delayed_sip"}])[0]
     try:
+        from . import universe
+        if not universe.recent_is_fresh():
+            say("Refreshing price history (once a day, a couple of minutes)...")
+            universe.refresh_recent(progress=lambda *_: None)
         say("Scanning the US market...")
         result = scanner.scan(now)
         say(scanner.to_text(result))
@@ -264,14 +303,28 @@ def publish(now: Optional[datetime] = None, say=print) -> None:
         say("Saved %d stocks" % len(ids))
         say("Saved %d quotes for %s" % (_publish_quotes(db, result, ids, stamp), result.bar_date))
         counts = _publish_alerts(db, result, ids, now, stamp)
-        say("Alerts: %d new, %d seen again" % (counts["new"], counts["seen_again"]))
-        say("Watchlist: " + _publish_watchlist(db, result, ids, stamp))
-        say("Top strip: %d figures" % _publish_indicators(db, stamp))
+        say("Alerts: %d new, %d seen again, %d held back as a split or payout" % (
+            counts["new"], counts["seen_again"], counts["held"]))
+        # These two use Yahoo, which is unofficial and sometimes refuses. A failure
+        # here must not stop the alerts going out.
+        try:
+            say("Watchlist: " + _publish_watchlist(db, result, ids, stamp))
+        except Exception as error:
+            say("Watchlist: could not update this time (%s)" % str(error)[:120])
+        try:
+            say("Top strip: %d figures" % _publish_indicators(db, stamp))
+        except Exception as error:
+            say("Top strip: could not update this time (%s)" % str(error)[:120])
+        from . import dispatcher
+        dispatcher.dispatch(db, say=say)
         db.update("scan_runs", "id=eq.%d" % run["id"], {
             "status": "ok", "finished_at": datetime.now(timezone.utc).isoformat(),
             "symbols_scanned": result.scanned, "alerts_found": len(result.alerts)})
+        dispatcher.ping_heartbeat(True)
     except Exception as error:
         db.update("scan_runs", "id=eq.%d" % run["id"], {
             "status": "failed", "finished_at": datetime.now(timezone.utc).isoformat(),
             "note": str(error)[:500]})
+        from . import dispatcher as _d
+        _d.ping_heartbeat(False)
         raise

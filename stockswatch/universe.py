@@ -7,7 +7,7 @@ only what was known on each day.
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -79,3 +79,53 @@ def download_history(progress=print) -> int:
         progress("  batch %d of %d: %s to %s, %d rows" % (
             number + 1, len(batches), batch[0], batch[-1], len(bars)))
     return total
+
+
+def refresh_recent(progress=print) -> int:
+    """Daily job: rebuild the stock list and re-download the last ~14 months of
+    daily bars. This is what tells the live scan what is "normal" for each stock.
+    Takes a couple of minutes. Replaces the previous download."""
+    progress("Rebuilding the stock list...")
+    build()
+    alpaca = _alpaca()
+    symbols = pd.read_parquet(config.UNIVERSE_FILE)["symbol"].tolist()
+    if config.BENCHMARK not in symbols:
+        symbols.append(config.BENCHMARK)
+    start = date.today() - timedelta(days=config.RECENT_DAYS)
+    frames = []
+    batches = [symbols[i:i + BATCH] for i in range(0, len(symbols), BATCH)]
+    for number, batch in enumerate(batches):
+        frames.append(alpaca.get_daily_bars(batch, start, date.today(), adjustment="all"))
+        progress("  batch %d of %d" % (number + 1, len(batches)))
+    bars = pd.concat(frames, ignore_index=True)
+    config.US_RECENT_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = config.US_RECENT_DIR / "bars.tmp"
+    bars.to_parquet(temporary, index=False)
+    temporary.replace(config.US_RECENT_DIR / "bars.parquet")
+    progress("Saved %d rows for %d stocks" % (len(bars), bars["symbol"].nunique()))
+    return len(bars)
+
+
+def recent_is_fresh() -> bool:
+    """True if the recent download was made today."""
+    path = config.US_RECENT_DIR / "bars.parquet"
+    return path.exists() and date.fromtimestamp(path.stat().st_mtime) == date.today()
+
+
+def bars_source(long_history: bool = False) -> str:
+    """The SQL "FROM" source for daily bars. The live scan wants the fresh recent
+    file; headline clauses ("biggest fall since...") want the long history too."""
+    def quoted(path) -> str:
+        return "read_parquet('%s')" % str(path).replace("'", "''")
+    columns = "symbol, date, high, low, close, volume"
+    recent = config.US_RECENT_DIR / "bars.parquet"
+    old = quoted(config.US_BARS_DIR / "*.parquet") if any(config.US_BARS_DIR.glob("*.parquet")) else None
+    if recent.exists() and not (long_history and old):
+        return quoted(recent)
+    if not recent.exists():
+        if not old:
+            raise RuntimeError("No price history yet. Run: python -m stockswatch refresh")
+        return old
+    return ("(SELECT %s FROM %s UNION ALL SELECT %s FROM %s WHERE date > (SELECT max(date) FROM %s))"
+            % (columns, old, columns, quoted(recent), old))
+
