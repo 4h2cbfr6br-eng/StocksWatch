@@ -25,6 +25,7 @@ from .providers.finnhub import FinnhubProvider
 from .providers.yahoo import YahooProvider
 
 RULE_NAME = "market_drop"
+MAX_WATCHLIST = 40              # stocks refreshed per run across all watchlists
 MAX_ENRICH = 40                 # Finnhub's free plan allows 60 calls a minute
 INDICATORS = [                  # key, label, Yahoo symbol
     ("ftse100", "FTSE 100", "^FTSE"),
@@ -228,8 +229,22 @@ def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now
 
 
 def _publish_watchlist(db: Db, result: scanner.ScanResult, ids: Dict[str, int], stamp: str) -> str:
-    history.update()        # refresh the watchlist's own prices and key numbers (US and UK)
-    watchlist = history.load_watchlist()
+    # Once the app has a watchlist, the database is the master copy (it is edited
+    # on the Settings page). watchlist.csv is only used to fill an empty one.
+    saved_items = db.select(
+        "watchlist_items", "select=threshold_pct,threshold_z,instruments!inner(symbol,market)&limit=%d" % MAX_WATCHLIST)
+    seeded = bool(saved_items)
+    seen = set()
+    watchlist = []
+    for i in saved_items:
+        stock = i["instruments"]
+        if stock["symbol"] not in seen:
+            seen.add(stock["symbol"])
+            watchlist.append(history.WatchItem(stock["symbol"], stock["market"],
+                                               float(i["threshold_pct"]), float(i["threshold_z"])))
+    if not seeded:
+        watchlist = history.load_watchlist()
+    history.update(watchlist)   # refresh the watchlist's own prices and key numbers (US and UK)
     rows = report.build_rows(watchlist, history.load_bars(), history.load_fundamentals())
     scanned = set(result.quotes.index)
     item_rows = []
@@ -260,6 +275,8 @@ def _publish_watchlist(db: Db, result: scanner.ScanResult, ids: Dict[str, int], 
         item_rows.append({"instrument_id": iid, "threshold_pct": item.threshold_pct,
                           "threshold_z": item.threshold_z, "enabled": True})
 
+    if seeded:
+        return "%d watchlist stocks updated" % len(item_rows)
     lists = db.select("watchlists", "select=id")
     if len(lists) != 1:
         return ("watchlist prices saved; not yet linked to an account (%d accounts exist)" % len(lists))
@@ -280,6 +297,61 @@ def _publish_indicators(db: Db, stamp: str) -> int:
         rows.append({"key": key, "label": label, "value": last, "pct_change": (last / prev - 1) * 100,
                      "as_of": g["date"].iloc[-1], "sort_order": order, "updated_at": stamp})
     db.upsert("market_indicators", rows, on_conflict="key")
+    return len(rows)
+
+
+SECTORS_PER_RUN = 15            # leaves room in Finnhub's 60-a-minute allowance for alert news
+SERIES_DAYS = 260               # about one year of trading days
+
+
+def _fill_sectors(db: Db) -> int:
+    """Look up the sector for a few more stocks each run, most-traded first.
+    Spread over many runs, so the free data allowance is never exceeded."""
+    missing = db.select(
+        "instruments", "select=id,symbol,instrument_stats!inner(dollar_volume_20d)&market=eq.US"
+        "&sector=is.null&is_active=eq.true&instrument_stats.dollar_volume_20d=gte.%d"
+        "&order=instrument_stats(dollar_volume_20d).desc.nullslast&limit=%d"
+        % (rules.MIN_DOLLAR_VOLUME, SECTORS_PER_RUN))
+    if not missing:
+        return 0
+    finnhub = FinnhubProvider(os.getenv("FINNHUB_API_KEY") or "")
+    facts = finnhub.get_fundamentals([m["symbol"] for m in missing])
+    for m in missing:
+        f = facts.get(m["symbol"]) or {}
+        # "Unknown" stops a stock with no sector from being asked about for ever.
+        db.update("instruments", "id=eq.%d" % m["id"], {"sector": f.get("sector") or "Unknown"})
+        if f.get("market_cap"):
+            db.update("instrument_stats", "instrument_id=eq.%d" % m["id"],
+                      {"market_cap": f.get("market_cap"), "pe_ratio": f.get("pe_ratio")})
+    return len(missing)
+
+
+def series_rows(bars: pd.DataFrame, ids: Dict[str, int], stamp: str) -> List[dict]:
+    """One row per stock: its last year of closing prices, oldest first."""
+    rows = []
+    for symbol, g in bars.sort_values("date").groupby("symbol"):
+        if symbol not in ids:
+            continue
+        g = g.tail(SERIES_DAYS)
+        rows.append({"instrument_id": ids[symbol],
+                     "dates": [pd.to_datetime(d).date().isoformat() for d in g["date"]],
+                     "closes": [round(float(c), 4) for c in g["close"]], "updated_at": stamp})
+    return rows
+
+
+def _publish_series(db: Db, ids: Dict[str, int], stamp: str) -> int:
+    """Price history for the charts. US stocks once a day; the watchlist's London shares too."""
+    from . import universe
+    newest = db.select("price_series", "select=updated_at&order=updated_at.desc&limit=1")
+    if newest and newest[0]["updated_at"][:10] == stamp[:10]:
+        return 0
+    bars = duckdb.sql("SELECT symbol, date, close FROM %s WHERE close > 0" % universe.bars_source()).df()
+    rows = series_rows(bars, ids, stamp)
+    uk_ids = {r["symbol"]: r["id"] for r in db.select("instruments", "select=id,symbol&market=eq.UK")}
+    watch = history.load_bars()
+    if len(watch):
+        rows += series_rows(watch[watch["symbol"].isin(uk_ids)], uk_ids, stamp)
+    db.upsert("price_series", rows, on_conflict="instrument_id", batch=200)
     return len(rows)
 
 
@@ -317,6 +389,12 @@ def publish(now: Optional[datetime] = None, say=print) -> None:
             say("Top strip: could not update this time (%s)" % str(error)[:120])
         from . import dispatcher
         dispatcher.dispatch(db, say=say)
+        # Extras for the chart and Sectors pages. They must never stop a scan.
+        try:
+            say("Charts: %d price histories saved" % _publish_series(db, ids, stamp))
+            say("Sectors: %d more stocks looked up" % _fill_sectors(db))
+        except Exception as error:
+            say("Charts and sectors: skipped this time (%s)" % str(error)[:120])
         db.update("scan_runs", "id=eq.%d" % run["id"], {
             "status": "ok", "finished_at": datetime.now(timezone.utc).isoformat(),
             "symbols_scanned": result.scanned, "alerts_found": len(result.alerts)})

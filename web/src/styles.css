@@ -375,3 +375,53 @@ small { display: block; color: var(--grey); font-size: 12px; font-weight: 400; }
   .story-columns > section { padding-right: 0; }
   .story-columns > aside { padding-left: 0; border-left: 0; border-top: 1px solid var(--hairline); margin-top: 22px; padding-top: 22px; }
 }
+
+/* --- Price chart ------------------------------------------------------------- */
+
+.chart { margin: 26px 0 0; padding-top: 20px; border-top: 1px solid var(--hairline); }
+.chart figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 14px; margin-bottom: 6px; }
+.chart figcaption b { font-family: var(--serif); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart-change { margin-left: auto; }
+.chart-change .up, .chart-change .down { font-weight: 600; }
+.chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+.chart-grid { stroke: var(--hairline); stroke-width: 1; stroke-dasharray: 2 4; }
+.chart-line { fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area { fill: var(--ink); opacity: 0.06; }
+.chart-cursor { stroke: var(--claret); stroke-width: 1; opacity: 0.6; }
+.chart-dot { fill: var(--claret); stroke: var(--paper); stroke-width: 2; }
+.chart-label { fill: var(--grey); font-family: var(--sans); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.watch-add { margin-top: 14px; }
+.watch-add button, .settings button:not(.link-button), .settings-form button {
+  border: 0; background: var(--ink); color: var(--paper); font-weight: 600; font-size: 13px; padding: 8px 14px;
+}
+.watch-add button:disabled, .settings button:disabled { opacity: 0.55; }
+
+/* --- Settings and digest ----------------------------------------------------- */
+
+.settings h1 { font-size: clamp(22px, 3vw, 32px); overflow-wrap: anywhere; }
+.settings .mini-title { margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--hairline); }
+.notify-inline { border-bottom: 0; }
+.notify-inline .notify-row { padding: 0; }
+.settings-form { display: grid; gap: 14px; max-width: 520px; font-size: 15px; }
+.settings-form label { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.settings input.number, .settings input[type='time'], .settings select {
+  font: inherit; color: var(--ink); background: #fffaf4; border: 1px solid var(--hairline); border-radius: 0; padding: 6px 8px;
+}
+.settings input.number { width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
+.settings select { max-width: 100%; }
+.settings .check { display: inline-flex; align-items: center; gap: 6px; }
+.settings .row-actions { display: flex; align-items: center; gap: 12px; }
+.settings .row-actions .link-button { color: var(--grey); text-decoration: underline; text-underline-offset: 3px; }
+.settings .account-box { margin-top: 0; }
+.digest-day { margin-bottom: 26px; }
+.digest-day .tag { vertical-align: 2px; }
+.story-line.small { font-size: 13.5px; line-height: 1.4; margin-bottom: 12px; }
+
+@media (max-width: 680px) {
+  /* The chart is drawn 720 wide and shrunk to fit, so its labels need to start bigger. */
+  .chart-label { font-size: 21px; }
+  .chart-line { stroke-width: 2.6; }
+  .chart-change { margin-left: 0; }
+  .settings-form label { align-items: flex-start; flex-direction: column; gap: 6px; }
+}

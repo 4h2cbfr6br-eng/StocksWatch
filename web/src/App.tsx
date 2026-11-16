@@ -3,8 +3,9 @@ import type { Session } from '@supabase/supabase-js'
 import type { Edition } from './data'
 import { loadEdition } from './data'
 import FrontPage from './FrontPage'
+import { DigestPage, SectorsPage, SettingsPage } from './more'
 import Notify from './Notify'
-import { AccountPage, Login, MarketPage, StockPage, WatchlistPage } from './pages'
+import { Login, MarketPage, StockPage, WatchlistPage } from './pages'
 import { Footer, Masthead, Nav, TickerStrip, readRoute, type Route } from './parts'
 import { PREVIEW, supabase } from './supabase'
 
@@ -38,6 +39,8 @@ export default function App() {
 
   // Load the edition, then refresh it every minute.
   const signedIn = PREVIEW || (session !== null && session !== 'loading')
+  const [refresh, setRefresh] = useState(0)
+  const reload = () => setRefresh((n) => n + 1)
   useEffect(() => {
     if (!signedIn) return
     let current = true
@@ -55,7 +58,7 @@ export default function App() {
       current = false
       clearInterval(timer)
     }
-  }, [signedIn])
+  }, [signedIn, refresh])
 
   if (session === 'loading') return null
   if (!signedIn) return <Login />
@@ -83,8 +86,12 @@ export default function App() {
       {edition?.date && (route.page === 'us' || route.page === 'uk') && (
         <MarketPage market={route.page === 'us' ? 'US' : 'UK'} edition={edition} />
       )}
-      {route.page === 'account' && !PREVIEW && <AccountPage email={account} />}
-      {edition?.date && route.page === 'stock' && <StockPage id={route.id} edition={edition} />}
+      {route.page === 'sectors' && <SectorsPage />}
+      {route.page === 'digest' && <DigestPage />}
+      {route.page === 'settings' && (PREVIEW
+        ? <main className="wrap"><p className="muted pad">Settings need a signed-in account.</p></main>
+        : <SettingsPage email={account} onChange={reload} />)}
+      {edition?.date && route.page === 'stock' && <StockPage id={route.id} edition={edition} onChange={reload} />}
 
       <Footer edition={edition} preview={PREVIEW} />
     </>

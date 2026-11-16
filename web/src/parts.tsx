@@ -9,13 +9,15 @@ export const DISCLAIMER =
   'authorised or regulated by the Financial Conduct Authority. Prices may be delayed or wrong. ' +
   'The value of investments can fall as well as rise and you may get back less than you invest.'
 
-export type Route = { page: 'front' | 'watchlist' | 'us' | 'uk' | 'account' } | { page: 'stock'; id: number }
+export type Page = 'front' | 'watchlist' | 'us' | 'uk' | 'sectors' | 'digest' | 'settings'
+export type Route = { page: Page } | { page: 'stock'; id: number }
 
 export function readRoute(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '')
   const stock = hash.match(/^stock\/(\d+)$/)
   if (stock) return { page: 'stock', id: Number(stock[1]) }
-  if (hash === 'watchlist' || hash === 'us' || hash === 'uk' || hash === 'account') return { page: hash }
+  if (hash === 'account') return { page: 'settings' }
+  if (['watchlist', 'us', 'uk', 'sectors', 'digest', 'settings'].includes(hash)) return { page: hash as Page }
   return { page: 'front' }
 }
 
@@ -126,10 +128,7 @@ export function Masthead({ account, onSignOut, onMenu }: {
             <path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
           </svg>
           {onSignOut ? (
-            <>
-              <a href="#/account">Account</a>
-              <button className="link-button" onClick={onSignOut}>Sign out</button>
-            </>
+            <button className="link-button" onClick={onSignOut}>Sign out</button>
           ) : (
             <span>{account}</span>
           )}
@@ -139,11 +138,14 @@ export function Masthead({ account, onSignOut, onMenu }: {
   )
 }
 
-const TABS: { page: 'front' | 'watchlist' | 'us' | 'uk'; label: string; href: string }[] = [
+const TABS: { page: Page; label: string; href: string }[] = [
   { page: 'front', label: 'Front Page', href: '#/' },
   { page: 'watchlist', label: 'Watchlist', href: '#/watchlist' },
   { page: 'us', label: 'US', href: '#/us' },
   { page: 'uk', label: 'UK', href: '#/uk' },
+  { page: 'sectors', label: 'Sectors', href: '#/sectors' },
+  { page: 'digest', label: 'Digest', href: '#/digest' },
+  { page: 'settings', label: 'Settings', href: '#/settings' },
 ]
 
 export function Nav({ route, edition, open }: { route: Route; edition: Edition | null; open: boolean }) {

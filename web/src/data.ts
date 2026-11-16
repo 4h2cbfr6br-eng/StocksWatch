@@ -161,3 +161,109 @@ export async function searchStocks(text: string): Promise<Instrument[]> {
       .or(`symbol.ilike.${q}*,name.ilike.*${q}*`).eq('is_active', true).order('symbol').limit(8),
   )
 }
+
+// --- Price chart ---------------------------------------------------------------
+
+export type Series = { dates: string[]; closes: number[] }
+
+export async function loadSeries(id: number): Promise<Series | null> {
+  const found = rows<Series>(
+    await supabase.from('price_series').select('dates, closes').eq('instrument_id', id),
+  )[0]
+  return found && found.closes.length > 1 ? { dates: found.dates, closes: found.closes.map(Number) } : null
+}
+
+// --- Sectors -------------------------------------------------------------------
+
+export type SectorRow = {
+  sector: string
+  trading_date: string
+  stocks: number
+  median_pct: number
+  big_falls: number
+  falling: number
+  worst_pct: number
+  worst_id: number
+  worst_name: string | null
+}
+
+export async function loadSectors(): Promise<SectorRow[]> {
+  return rows<SectorRow>(
+    await supabase.from('sector_summary').select('*').neq('sector', 'Unknown').order('median_pct'),
+  )
+}
+
+// --- Digest: the last few editions ---------------------------------------------
+
+export async function loadArchive(): Promise<Alert[]> {
+  const since = new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10)
+  return rows<Alert>(
+    await supabase.from('alerts').select(`*, instruments(${STOCK})`).gte('trading_date', since)
+      .neq('status', 'held').order('trading_date', { ascending: false }).order('pct_change').limit(300),
+  )
+}
+
+export type Sent = { id: number; kind: string; status: string; detail: string | null; sent_at: string }
+
+export async function loadSent(): Promise<Sent[]> {
+  return rows<Sent>(
+    await supabase.from('notifications').select('id, kind, status, detail, sent_at')
+      .order('sent_at', { ascending: false }).limit(20),
+  )
+}
+
+// --- Settings ------------------------------------------------------------------
+
+export type Profile = {
+  user_id: string
+  daily_cap_market: number
+  daily_cap_watchlist: number
+  quiet_start: string
+  quiet_end: string
+  digest_mode: 'live' | 'digest' | 'both'
+}
+
+export async function loadProfile(): Promise<Profile | null> {
+  return rows<Profile>(await supabase.from('profiles').select('*'))[0] ?? null
+}
+
+export async function saveProfile(profile: Profile): Promise<void> {
+  const { user_id, ...changes } = profile
+  const { error } = await supabase.from('profiles').update(changes).eq('user_id', user_id)
+  if (error) throw new Error(error.message)
+}
+
+export type ListItem = {
+  id: number
+  watchlist_id: number
+  threshold_pct: number
+  threshold_z: number
+  enabled: boolean
+  instruments: Pick<Instrument, 'id' | 'symbol' | 'name' | 'market'>
+}
+
+export async function loadList(): Promise<ListItem[]> {
+  const items = rows<ListItem>(
+    await supabase.from('watchlist_items').select('*, instruments(id, symbol, name, market)'),
+  )
+  return items.sort((a, b) => a.instruments.symbol.localeCompare(b.instruments.symbol))
+}
+
+export async function saveItem(id: number, changes: Partial<Pick<ListItem, 'threshold_pct' | 'threshold_z' | 'enabled'>>) {
+  const { error } = await supabase.from('watchlist_items').update(changes).eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function removeItem(id: number) {
+  const { error } = await supabase.from('watchlist_items').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function addToWatchlist(instrumentId: number) {
+  const list = rows<{ id: number }>(await supabase.from('watchlists').select('id').limit(1))[0]
+  if (!list) throw new Error('No watchlist found for this account.')
+  const { error } = await supabase.from('watchlist_items')
+    .upsert({ watchlist_id: list.id, instrument_id: instrumentId, enabled: true },
+      { onConflict: 'watchlist_id,instrument_id' })
+  if (error) throw new Error(error.message)
+}

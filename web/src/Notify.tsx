@@ -14,7 +14,7 @@ const isIphone = /iPhone|iPad|iPod/.test(navigator.userAgent)
 const installed =
   window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
 
-export default function Notify() {
+export default function Notify({ always = false }: { always?: boolean }) {
   const [state, setState] = useState<State>('checking')
   const [problem, setProblem] = useState('')
 
@@ -64,10 +64,14 @@ export default function Notify() {
     setState('off')
   }
 
-  if (state === 'checking' || state === 'unsupported') return null
+  if (state === 'checking') return null
+  if (state === 'unsupported' && !always) return null
+  // On the front page the strip is only a prompt: once it is on, it gets out of the way.
+  if (state === 'on' && !always) return null
   return (
-    <div className="notify">
-      <div className="wrap notify-row">
+    <div className={always ? 'notify notify-inline' : 'notify'}>
+      <div className={always ? 'notify-row' : 'wrap notify-row'}>
+        {state === 'unsupported' && <span className="muted">This browser cannot receive notifications.</span>}
         {state === 'needs-install' && (
           <span>
             To get alerts on this iPhone: tap the Share button, choose <b>Add to Home Screen</b>, then open

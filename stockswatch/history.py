@@ -9,7 +9,7 @@ import csv
 import json
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Dict, List
+from typing import Optional, Dict, List
 
 import duckdb
 import pandas as pd
@@ -44,9 +44,9 @@ def load_watchlist() -> List[WatchItem]:
     return items
 
 
-def update() -> pd.DataFrame:
+def update(watchlist: Optional[List[WatchItem]] = None) -> pd.DataFrame:
     """Fetch history for every watchlist stock plus the indices, and save it."""
-    watchlist = load_watchlist()
+    watchlist = watchlist if watchlist is not None else load_watchlist()
     groups = {market: [w.symbol for w in watchlist if w.market == market]
               for market in sorted({w.market for w in watchlist})}
     indices = sorted({config.INDEX_FOR_MARKET[market] for market in groups})

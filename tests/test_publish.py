@@ -39,3 +39,14 @@ def test_clean_name_tidies_london_listings():
     assert publish.clean_name("SHELL PLC ORD EUR0.07") == "Shell plc"
     assert publish.clean_name("ASTRAZENECA PLC ORD SHS $0.25") == "Astrazeneca plc"
     assert publish.clean_name("NVIDIA Corporation Common Stock") == "NVIDIA Corporation"
+
+
+def test_series_rows_keep_the_latest_year_oldest_first():
+    import pandas as pd
+    days = pd.date_range("2025-01-01", periods=300, freq="D")
+    bars = pd.DataFrame({"symbol": "AAA", "date": days, "close": range(1, 301)})
+    rows = publish.series_rows(bars, {"AAA": 7}, "2026-11-16T00:00:00+00:00")
+    assert len(rows) == 1 and rows[0]["instrument_id"] == 7
+    assert len(rows[0]["closes"]) == publish.SERIES_DAYS
+    assert rows[0]["closes"][-1] == 300.0 and rows[0]["dates"][0] < rows[0]["dates"][-1]
+    assert publish.series_rows(bars, {}, "x") == []

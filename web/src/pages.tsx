@@ -1,15 +1,28 @@
 // The other pages: one stock, the watchlist, a market table, and sign-in.
 import { useEffect, useState } from 'react'
 import type { Alert, Edition, Instrument, QuoteRow } from './data'
-import { loadStock } from './data'
+import { addToWatchlist, loadSeries, loadStock, type Series } from './data'
+import Chart from './Chart'
 import { direction, indexName, longDate, marketCap, pct, price, ratio, times } from './format'
 import { AlertTags, KeyNumbers, Tag, UnusualBar, stockLink } from './parts'
-import { supabase } from './supabase'
+import { PREVIEW, supabase } from './supabase'
 
 // --- One stock ----------------------------------------------------------------
 
-export function StockPage({ id, edition }: { id: number; edition: Edition }) {
+export function StockPage({ id, edition, onChange }: { id: number; edition: Edition; onChange: () => void }) {
   const [data, setData] = useState<{ stock: Instrument; alerts: Alert[] } | null | 'missing'>(null)
+  const [series, setSeries] = useState<Series | null>(null)
+  const [adding, setAdding] = useState('')
+
+  useEffect(() => {
+    let current = true
+    setSeries(null)
+    setAdding('')
+    loadSeries(id).then((found) => current && setSeries(found)).catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [id])
 
   useEffect(() => {
     let current = true
@@ -49,6 +62,22 @@ export function StockPage({ id, edition }: { id: number; edition: Edition }) {
         {today && <AlertTags alert={today} edition={edition} />}
         {!today && watched && <Tag kind="outline">Watchlist</Tag>}
       </span>
+      {!watched && !PREVIEW && (
+        <p className="watch-add">
+          <button
+            disabled={adding === 'working'}
+            onClick={() => {
+              setAdding('working')
+              addToWatchlist(stock.id).then(() => { setAdding(''); onChange() }).catch((e: Error) => setAdding(e.message))
+            }}
+          >
+            Add to watchlist
+          </button>
+          {adding && adding !== 'working' && <span className="error"> {adding}</span>}
+        </p>
+      )}
+
+      {series && <Chart stock={stock} series={series} />}
 
       <div className="story-columns">
         <section>
@@ -277,7 +306,7 @@ export function Login() {
 
 // --- Account ------------------------------------------------------------------
 
-export function AccountPage({ email }: { email: string }) {
+export function PasswordBox({ email }: { email: string }) {
   const [password, setPassword] = useState('')
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [message, setMessage] = useState('')
@@ -297,12 +326,7 @@ export function AccountPage({ email }: { email: string }) {
   }
 
   return (
-    <main className="wrap story">
-      <a className="back" href="#/">← Front page</a>
-      <div className="label">Account</div>
-      <h1>{email}</h1>
-      <div className="login-box account-box">
-        <h2 className="mini-title">Set a password</h2>
+    <div className="login-box account-box">
         <p className="muted small login-help">
           Needed to sign in to the iPhone Home Screen app, where emailed links do not work. At least 10
           characters. Use one you do not use anywhere else.
@@ -319,7 +343,6 @@ export function AccountPage({ email }: { email: string }) {
           {state === 'saved' && <p className="muted small">Password saved. You can now use it to sign in.</p>}
           {message && <p className="error">{message}</p>}
         </form>
-      </div>
-    </main>
+    </div>
   )
 }
