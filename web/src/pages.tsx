@@ -197,7 +197,8 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [message, setMessage] = useState('')
-  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState('')
 
   async function send(event: React.FormEvent) {
     event.preventDefault()
@@ -214,27 +215,13 @@ export function Login() {
     }
   }
 
-  // On an iPhone the emailed link opens in Safari, not in the Home Screen app.
-  // So the link can be copied from the email and pasted here instead: the app
-  // reads the one-time token out of it. (A 6-digit code works too, if the email has one.)
-  async function useCode(event: React.FormEvent) {
+  // The emailed link opens in Safari, which on an iPhone is separate from the
+  // Home Screen app. A password (set on the Account page) signs the app in directly.
+  async function withPassword(event: React.FormEvent) {
     event.preventDefault()
-    setMessage('')
-    const text = code.trim()
-    let result
-    if (/^\d{6,8}$/.test(text)) {
-      result = await supabase.auth.verifyOtp({ email: email.trim(), token: text, type: 'email' })
-    } else {
-      let token: string | null = null
-      try {
-        token = new URL(text).searchParams.get('token')
-      } catch {
-        // not a link
-      }
-      if (!token) return setMessage('That does not look like the link from the email. Copy the whole link and paste it again.')
-      result = await supabase.auth.verifyOtp({ token_hash: token, type: 'magiclink' })
-    }
-    if (result.error) setMessage(result.error.message)
+    setPasswordMessage('')
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    if (error) setPasswordMessage(error.message)
   }
 
   return (
@@ -260,24 +247,78 @@ export function Login() {
           </form>
         )}
 
-        {/* Always shown, so it is still here if the phone restarts the app while you are in Mail. */}
-        <form onSubmit={useCode} className="login-paste">
-          <div className="label">On an iPhone</div>
+        <form onSubmit={withPassword} className="login-paste">
+          <div className="label">Or use a password</div>
           <p className="muted small login-help">
-            In the email, press and hold the link (do not tap it), choose <b>Copy Link</b>, then paste it here.
+            For the iPhone Home Screen app. Set a password first on the Account page, wherever you are already
+            signed in.
           </p>
           <input
-            autoComplete="off" autoCapitalize="off" autoCorrect="off" placeholder="Paste the link from the email"
-            aria-label="Sign-in link" value={code} onChange={(e) => setCode(e.target.value)}
+            type="email" required autoComplete="username" placeholder="you@example.com"
+            aria-label="Email address" value={email} onChange={(e) => setEmail(e.target.value)}
           />
-          <button type="submit" disabled={code.trim().length < 6}>Sign in with pasted link</button>
-          {state !== 'error' && message && <p className="error">{message}</p>}
+          <input
+            type="password" required autoComplete="current-password" placeholder="Password"
+            aria-label="Password" value={password} onChange={(e) => setPassword(e.target.value)}
+          />
+          <button type="submit">Sign in with password</button>
+          {passwordMessage && <p className="error">{passwordMessage}</p>}
         </form>
         {import.meta.env.DEV && (
           <p className="muted small">
             On this Mac only: <a href="/?preview=1">open the design preview without signing in</a>.
           </p>
         )}
+      </div>
+    </main>
+  )
+}
+
+
+// --- Account ------------------------------------------------------------------
+
+export function AccountPage({ email }: { email: string }) {
+  const [password, setPassword] = useState('')
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [message, setMessage] = useState('')
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault()
+    setState('saving')
+    setMessage('')
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) {
+      setMessage(error.message)
+      setState('idle')
+    } else {
+      setPassword('')
+      setState('saved')
+    }
+  }
+
+  return (
+    <main className="wrap story">
+      <a className="back" href="#/">← Front page</a>
+      <div className="label">Account</div>
+      <h1>{email}</h1>
+      <div className="login-box account-box">
+        <h2 className="mini-title">Set a password</h2>
+        <p className="muted small login-help">
+          Needed to sign in to the iPhone Home Screen app, where emailed links do not work. At least 10
+          characters. Use one you do not use anywhere else.
+        </p>
+        <form onSubmit={save}>
+          <input type="email" autoComplete="username" value={email} readOnly hidden />
+          <input
+            type="password" required minLength={10} autoComplete="new-password" placeholder="New password"
+            aria-label="New password" value={password} onChange={(e) => setPassword(e.target.value)}
+          />
+          <button type="submit" disabled={state === 'saving'}>
+            {state === 'saving' ? 'Saving…' : 'Save password'}
+          </button>
+          {state === 'saved' && <p className="muted small">Password saved. You can now use it to sign in.</p>}
+          {message && <p className="error">{message}</p>}
+        </form>
       </div>
     </main>
   )

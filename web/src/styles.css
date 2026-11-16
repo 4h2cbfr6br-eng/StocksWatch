@@ -293,16 +293,19 @@ small { display: block; color: var(--grey); font-size: 12px; font-weight: 400; }
 
 .login { max-width: 440px; margin: 0 auto; padding: 12vh 20px 40px; }
 .login .masthead-title { display: block; padding-bottom: 22px; border-bottom: 1px solid var(--hairline); margin-bottom: 26px; }
-.login input {
+.login input, .account-box input {
   width: 100%; padding: 12px; font: inherit; font-size: 16px; color: var(--ink);
   background: #fffaf4; border: 1px solid var(--hairline); border-radius: 0; margin-bottom: 10px;
 }
-.login button[type='submit'] {
+.login button[type='submit'], .account-box button[type='submit'] {
   width: 100%; padding: 13px; border: 0; background: var(--ink); color: var(--paper); font-weight: 600;
 }
 .login button:disabled { opacity: 0.55; }
 .login .small { margin-top: 22px; }
 .login .login-help { margin: 0 0 14px; }
+.account-box { max-width: 440px; margin-top: 26px; }
+.account-box button:disabled { opacity: 0.55; }
+.account-box .login-help { margin: 0 0 14px; }
 .login-paste { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--hairline); }
 .login .small a { text-decoration: underline; text-underline-offset: 3px; }
 .error { color: var(--down); margin-top: 10px; font-size: 14px; }

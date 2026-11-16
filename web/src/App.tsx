@@ -4,7 +4,7 @@ import type { Edition } from './data'
 import { loadEdition } from './data'
 import FrontPage from './FrontPage'
 import Notify from './Notify'
-import { Login, MarketPage, StockPage, WatchlistPage } from './pages'
+import { AccountPage, Login, MarketPage, StockPage, WatchlistPage } from './pages'
 import { Footer, Masthead, Nav, TickerStrip, readRoute, type Route } from './parts'
 import { PREVIEW, supabase } from './supabase'
 
@@ -83,6 +83,7 @@ export default function App() {
       {edition?.date && (route.page === 'us' || route.page === 'uk') && (
         <MarketPage market={route.page === 'us' ? 'US' : 'UK'} edition={edition} />
       )}
+      {route.page === 'account' && !PREVIEW && <AccountPage email={account} />}
       {edition?.date && route.page === 'stock' && <StockPage id={route.id} edition={edition} />}
 
       <Footer edition={edition} preview={PREVIEW} />
