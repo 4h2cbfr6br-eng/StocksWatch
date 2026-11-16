@@ -243,21 +243,9 @@ export function Login() {
       <div className="login-box">
         <div className="label">Sign in</div>
         {state === 'sent' ? (
-          <form onSubmit={useCode}>
-            <p className="standfirst">
-              Check your inbox. We sent a sign-in link to <b>{email}</b>.
-            </p>
-            <p className="muted small login-help">
-              On this Mac, just click the link. In the iPhone Home Screen app: press and hold the link in the
-              email, tap <b>Copy Link</b>, then paste it below.
-            </p>
-            <input
-              autoComplete="off" autoCapitalize="off" autoCorrect="off" placeholder="Paste the link from the email"
-              aria-label="Sign-in link" value={code} onChange={(e) => setCode(e.target.value)}
-            />
-            <button type="submit" disabled={code.trim().length < 6}>Sign in</button>
-            {message && <p className="error">{message}</p>}
-          </form>
+          <p className="standfirst">
+            Check your inbox. We sent a sign-in link to <b>{email}</b>. On a computer, just click it.
+          </p>
         ) : (
           <form onSubmit={send}>
             <p className="standfirst">Enter your email and we'll send a link that signs you in. No password.</p>
@@ -271,6 +259,20 @@ export function Login() {
             {state === 'error' && <p className="error">{message}</p>}
           </form>
         )}
+
+        {/* Always shown, so it is still here if the phone restarts the app while you are in Mail. */}
+        <form onSubmit={useCode} className="login-paste">
+          <div className="label">On an iPhone</div>
+          <p className="muted small login-help">
+            In the email, press and hold the link (do not tap it), choose <b>Copy Link</b>, then paste it here.
+          </p>
+          <input
+            autoComplete="off" autoCapitalize="off" autoCorrect="off" placeholder="Paste the link from the email"
+            aria-label="Sign-in link" value={code} onChange={(e) => setCode(e.target.value)}
+          />
+          <button type="submit" disabled={code.trim().length < 6}>Sign in with pasted link</button>
+          {state !== 'error' && message && <p className="error">{message}</p>}
+        </form>
         {import.meta.env.DEV && (
           <p className="muted small">
             On this Mac only: <a href="/?preview=1">open the design preview without signing in</a>.
