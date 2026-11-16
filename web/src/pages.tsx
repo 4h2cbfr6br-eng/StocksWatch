@@ -197,6 +197,7 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [message, setMessage] = useState('')
+  const [code, setCode] = useState('')
 
   async function send(event: React.FormEvent) {
     event.preventDefault()
@@ -213,15 +214,33 @@ export function Login() {
     }
   }
 
+  // On an iPhone the emailed link opens in Safari, not in the Home Screen app,
+  // so the email also carries a code that can be typed in here instead.
+  async function useCode(event: React.FormEvent) {
+    event.preventDefault()
+    setMessage('')
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' })
+    if (error) setMessage(error.message)
+  }
+
   return (
     <main className="login">
       <div className="masthead-title">StocksWatch</div>
       <div className="login-box">
         <div className="label">Sign in</div>
         {state === 'sent' ? (
-          <p className="standfirst">
-            Check your inbox. We sent a sign-in link to <b>{email}</b>. Open it on this device.
-          </p>
+          <form onSubmit={useCode}>
+            <p className="standfirst">
+              Check your inbox. We sent an email to <b>{email}</b>. Type the code from it here, or open its link
+              on this device.
+            </p>
+            <input
+              inputMode="numeric" autoComplete="one-time-code" placeholder="Code from the email"
+              aria-label="Sign-in code" value={code} onChange={(e) => setCode(e.target.value)}
+            />
+            <button type="submit" disabled={code.trim().length < 6}>Sign in</button>
+            {message && <p className="error">{message}</p>}
+          </form>
         ) : (
           <form onSubmit={send}>
             <p className="standfirst">Enter your email and we'll send a link that signs you in. No password.</p>
