@@ -39,6 +39,22 @@ class FinnhubProvider:
         except (requests.RequestException, ValueError):
             return {}
 
+    def get_news(self, symbol: str, start, end, limit: int = 3) -> list:
+        """Most recent news items that mention the company: headline, source, url, time."""
+        items = self._get("/company-news", symbol=symbol,
+                          **{"from": start.isoformat(), "to": end.isoformat()})
+        if not isinstance(items, list):
+            return []
+        items = sorted((i for i in items if i.get("headline")), key=lambda i: i.get("datetime") or 0,
+                       reverse=True)
+        return [{"headline": i["headline"], "source": i.get("source"), "url": i.get("url"),
+                 "datetime": i.get("datetime")} for i in items[:limit]]
+
+    def get_earnings_symbols(self, start, end) -> set:
+        """Symbols of companies reporting results between two dates."""
+        data = self._get("/calendar/earnings", **{"from": start.isoformat(), "to": end.isoformat()})
+        return {(i["symbol"], i.get("date"), i.get("hour") or "") for i in data.get("earningsCalendar") or []}
+
     def get_fundamentals(self, symbols: Sequence[str]) -> Dict[str, dict]:
         out: Dict[str, dict] = {}
         for symbol in symbols:

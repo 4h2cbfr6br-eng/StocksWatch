@@ -9,3 +9,7 @@ __pycache__/
 # Downloaded data and generated pages
 data/
 out/
+
+# Web app
+web/node_modules/
+web/dist/

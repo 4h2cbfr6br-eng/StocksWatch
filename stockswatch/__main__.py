@@ -7,6 +7,7 @@
     python -m stockswatch backtest-data   download whole-US-market history (once)
     python -m stockswatch backtest        replay the rules over that history
     python -m stockswatch scan            scan the whole US market right now
+    python -m stockswatch publish         scan, then save everything to the database
 """
 from __future__ import annotations
 
@@ -73,10 +74,13 @@ def do_scan() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="stockswatch", description="Watchlist drop report")
     parser.add_argument("command", nargs="?", default="run",
-                        choices=["run", "update", "report", "backtest-data", "backtest", "scan"])
+                        choices=["run", "update", "report", "backtest-data", "backtest", "scan", "publish"])
     command = parser.parse_args().command
     if command == "scan":
         return do_scan()
+    if command == "publish":
+        from . import publish
+        return publish.publish()
     if command == "backtest-data":
         return do_backtest_data()
     if command == "backtest":

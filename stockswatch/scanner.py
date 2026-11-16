@@ -36,6 +36,7 @@ class Candidate:
     push: bool                 # big enough to buzz the phone
     high_52w: float
     low_52w: float
+    gap_pct: Optional[float] = None   # opening price vs previous close
 
 
 @dataclass
@@ -46,6 +47,7 @@ class ScanResult:
     sell_off: bool
     alerts: List[Candidate] = field(default_factory=list)
     held: List[str] = field(default_factory=list)    # "SYMBOL: reason" for suppressed candidates
+    quotes: Optional[pd.DataFrame] = None            # every stock seen, with its move and stats
 
 
 # --- What is "normal" for each stock ------------------------------------------
@@ -98,8 +100,8 @@ def evaluate(snapshots: Dict[str, dict], stats: pd.DataFrame, names: Dict[str, s
         today, prev = (snap or {}).get("dailyBar"), (snap or {}).get("prevDailyBar")
         if not today or not prev or not prev.get("c") or not today.get("c"):
             continue
-        table.append((symbol, today["t"][:10], today["c"], prev["c"], today.get("v") or 0))
-    frame = pd.DataFrame(table, columns=["symbol", "bar_date", "price", "prev_close", "volume"])
+        table.append((symbol, today["t"][:10], today["c"], prev["c"], today.get("v") or 0, today.get("o")))
+    frame = pd.DataFrame(table, columns=["symbol", "bar_date", "price", "prev_close", "volume", "open"])
     if frame.empty:
         return ScanResult(None, None, 0, False)
 
@@ -116,6 +118,7 @@ def evaluate(snapshots: Dict[str, dict], stats: pd.DataFrame, names: Dict[str, s
     frame["z"] = (frame["pct"] / 100.0) / frame["sigma"]
     frame["vs_index"] = frame["pct"] - index_pct if index_pct is not None else np.nan
     frame["rel_volume"] = frame["volume"] / (frame["avg_volume"] * fraction)
+    frame["gap_pct"] = (frame["open"] / frame["prev_close"] - 1.0) * 100.0
 
     eligible = ((frame["prev_close"] >= rules.MIN_PRICE)
                 & (frame["dollar_volume"] >= rules.MIN_DOLLAR_VOLUME)
@@ -126,7 +129,8 @@ def evaluate(snapshots: Dict[str, dict], stats: pd.DataFrame, names: Dict[str, s
                                        frame["vs_index"].to_numpy())
               & (frame["rel_volume"] >= rules.MARKET_MIN_REL_VOLUME))
 
-    result = ScanResult(bar_date, index_pct, int(eligible.sum()), False)
+    frame["eligible"] = eligible
+    result = ScanResult(bar_date, index_pct, int(eligible.sum()), False, quotes=frame)
     for symbol, row in frame[falls_far_enough].iterrows():
         reason = rules.evaluate_market(row["pct"], row["z"], row["vs_index"]).held
         if reason:
@@ -138,7 +142,8 @@ def evaluate(snapshots: Dict[str, dict], stats: pd.DataFrame, names: Dict[str, s
             rel_volume=float(row["rel_volume"]), dollar_volume=float(row["dollar_volume"]),
             tier=rules.tier_for(row["pct"]),
             push=bool(row["dollar_volume"] >= rules.PUSH_MIN_DOLLAR_VOLUME),
-            high_52w=float(row["high_52w"]), low_52w=float(row["low_52w"])))
+            high_52w=float(row["high_52w"]), low_52w=float(row["low_52w"]),
+            gap_pct=None if pd.isna(row["gap_pct"]) else float(row["gap_pct"])))
 
     result.sell_off = ((index_pct is not None and index_pct <= rules.SELL_OFF_INDEX_PCT)
                        or len(result.alerts) > rules.SELL_OFF_ALERT_COUNT)
