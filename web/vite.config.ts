@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => {
   const secret = env.SUPABASE_SECRET_KEY
 
   return {
+    // On the public site the app lives in a sub-folder (set by the deploy job).
+    base: process.env.BASE_PATH || '/',
     plugins: [react()],
     define: {
       __SUPABASE_URL__: JSON.stringify(env.SUPABASE_URL ?? ''),

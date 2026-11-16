@@ -9,7 +9,7 @@ import App from './App'
 
 // The service worker is what lets a notification arrive when the app is closed.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {})
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {})
 }
 
 createRoot(document.getElementById('root')!).render(

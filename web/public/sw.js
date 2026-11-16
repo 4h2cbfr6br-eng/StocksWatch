@@ -10,8 +10,9 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'StocksWatch', {
       body: data.body || '',
-      icon: '/icon-192.png',
-      data: { url: data.url || '/' },
+      icon: self.registration.scope + 'icon-192.png',
+      // Links are relative to wherever the app is installed.
+      data: { url: new URL(data.url || '', self.registration.scope).href },
     })
   )
 })
@@ -19,7 +20,7 @@ self.addEventListener('push', (event) => {
 // Tapping a notification opens the stock it is about.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = (event.notification.data && event.notification.data.url) || '/'
+  const url = (event.notification.data && event.notification.data.url) || self.registration.scope
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
       for (const w of windows) {

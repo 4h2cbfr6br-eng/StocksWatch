@@ -39,7 +39,7 @@ class Message:
     key: str                   # identifies this event, so it is never sent twice
     title: str
     body: str
-    url: str = "/"
+    url: str = ""                # relative to where the app is installed
     weight: float = 0.0        # bigger = more unusual; decides who wins under the cap
     alert_id: Optional[int] = None
     market_event_id: Optional[int] = None
@@ -93,7 +93,7 @@ def market_messages(alerts: Iterable[dict], event: Optional[dict]) -> List[Messa
             kind="market", key="stock:%d:%s" % (stock["id"], a["trading_date"]), alert_id=a["id"],
             title="%s %s" % (stock["name"], _pct(float(a["pct_change"]))),
             body=_stock_body(a.get("z_score"), _money("USD", a.get("price")), "15 min delayed"),
-            url="/#/stock/%d" % stock["id"], weight=abs(float(a.get("z_score") or 0))))
+            url="#/stock/%d" % stock["id"], weight=abs(float(a.get("z_score") or 0))))
     return out
 
 
@@ -128,7 +128,7 @@ def watchlist_messages(items: Iterable[dict], us_date: Optional[date], now: date
             title="%s %s" % (stock["name"], _pct(pct)),
             body=_stock_body(z, _money(stock.get("price_unit") or "USD", quote.get("price")),
                              "watchlist · " + note),
-            url="/#/stock/%d" % stock["id"], weight=abs(z) if z is not None else abs(pct)))
+            url="#/stock/%d" % stock["id"], weight=abs(z) if z is not None else abs(pct)))
     return out
 
 
