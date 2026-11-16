@@ -214,13 +214,27 @@ export function Login() {
     }
   }
 
-  // On an iPhone the emailed link opens in Safari, not in the Home Screen app,
-  // so the email also carries a code that can be typed in here instead.
+  // On an iPhone the emailed link opens in Safari, not in the Home Screen app.
+  // So the link can be copied from the email and pasted here instead: the app
+  // reads the one-time token out of it. (A 6-digit code works too, if the email has one.)
   async function useCode(event: React.FormEvent) {
     event.preventDefault()
     setMessage('')
-    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' })
-    if (error) setMessage(error.message)
+    const text = code.trim()
+    let result
+    if (/^\d{6,8}$/.test(text)) {
+      result = await supabase.auth.verifyOtp({ email: email.trim(), token: text, type: 'email' })
+    } else {
+      let token: string | null = null
+      try {
+        token = new URL(text).searchParams.get('token')
+      } catch {
+        // not a link
+      }
+      if (!token) return setMessage('That does not look like the link from the email. Copy the whole link and paste it again.')
+      result = await supabase.auth.verifyOtp({ token_hash: token, type: 'magiclink' })
+    }
+    if (result.error) setMessage(result.error.message)
   }
 
   return (
@@ -231,12 +245,15 @@ export function Login() {
         {state === 'sent' ? (
           <form onSubmit={useCode}>
             <p className="standfirst">
-              Check your inbox. We sent an email to <b>{email}</b>. Type the code from it here, or open its link
-              on this device.
+              Check your inbox. We sent a sign-in link to <b>{email}</b>.
+            </p>
+            <p className="muted small login-help">
+              On this Mac, just click the link. In the iPhone Home Screen app: press and hold the link in the
+              email, tap <b>Copy Link</b>, then paste it below.
             </p>
             <input
-              inputMode="numeric" autoComplete="one-time-code" placeholder="Code from the email"
-              aria-label="Sign-in code" value={code} onChange={(e) => setCode(e.target.value)}
+              autoComplete="off" autoCapitalize="off" autoCorrect="off" placeholder="Paste the link from the email"
+              aria-label="Sign-in link" value={code} onChange={(e) => setCode(e.target.value)}
             />
             <button type="submit" disabled={code.trim().length < 6}>Sign in</button>
             {message && <p className="error">{message}</p>}

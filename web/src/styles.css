@@ -302,6 +302,7 @@ small { display: block; color: var(--grey); font-size: 12px; font-weight: 400; }
 }
 .login button:disabled { opacity: 0.55; }
 .login .small { margin-top: 22px; }
+.login .login-help { margin: 0 0 14px; }
 .login .small a { text-decoration: underline; text-underline-offset: 3px; }
 .error { color: var(--down); margin-top: 10px; font-size: 14px; }
 .problem { padding: 12px 20px; margin-top: 14px; border: 1px solid var(--down); color: var(--down); font-size: 14px; }
