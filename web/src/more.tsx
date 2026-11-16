@@ -180,14 +180,24 @@ export function SettingsPage({ email, onChange }: { email: string; onChange: () 
   const saved = useLoad<Profile | null>(loadProfile)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [note, setNote] = useState('')
-  useEffect(() => setProfile(saved.data), [saved.data])
+  // The two caps are kept as typed text, so the box can be emptied and retyped.
+  const [capMarket, setCapMarket] = useState('')
+  const [capWatch, setCapWatch] = useState('')
+  useEffect(() => {
+    setProfile(saved.data)
+    if (saved.data) {
+      setCapMarket(String(saved.data.daily_cap_market))
+      setCapWatch(String(saved.data.daily_cap_watchlist))
+    }
+  }, [saved.data])
+  const capsValid = [capMarket, capWatch].every((text) => /^\d{1,2}$/.test(text.trim()))
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
     if (!profile) return
     setNote('')
     try {
-      await saveProfile(profile)
+      await saveProfile({ ...profile, daily_cap_market: Number(capMarket), daily_cap_watchlist: Number(capWatch) })
       setNote('Saved.')
     } catch (error) {
       setNote((error as Error).message)
@@ -208,13 +218,13 @@ export function SettingsPage({ email, onChange }: { email: string; onChange: () 
         <form onSubmit={save} className="settings-form">
           <label>
             Whole-market alerts a day, at most
-            <input className="number" type="number" min="0" max="50" value={profile.daily_cap_market}
-              onChange={(e) => set({ daily_cap_market: Number(e.target.value) })} />
+            <input className="number" inputMode="numeric" maxLength={2} value={capMarket}
+              aria-label="Whole-market alerts a day" onChange={(e) => setCapMarket(e.target.value.replace(/\D/g, ''))} />
           </label>
           <label>
             Watchlist alerts a day, at most
-            <input className="number" type="number" min="0" max="50" value={profile.daily_cap_watchlist}
-              onChange={(e) => set({ daily_cap_watchlist: Number(e.target.value) })} />
+            <input className="number" inputMode="numeric" maxLength={2} value={capWatch}
+              aria-label="Watchlist alerts a day" onChange={(e) => setCapWatch(e.target.value.replace(/\D/g, ''))} />
           </label>
           <label>
             Quiet hours: nothing is sent from
@@ -233,7 +243,8 @@ export function SettingsPage({ email, onChange }: { email: string; onChange: () 
             </select>
           </label>
           <div>
-            <button type="submit">Save</button> {note && <span className="muted small">{note}</span>}
+            <button type="submit" disabled={!capsValid}>Save</button>{' '}
+            {!capsValid && <span className="muted small">Enter a number from 0 to 99 in both boxes.</span>} {note && <span className="muted small">{note}</span>}
           </div>
         </form>
       )}

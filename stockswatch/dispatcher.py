@@ -385,3 +385,32 @@ def send_test(db: Optional[Db] = None, say: Callable = print) -> None:
                                      "status": "sent" if outcome == "ok" else "failed",
                                      "detail": "test [%s]" % outcome}])
         say("Test push: %s" % outcome)
+
+
+PROBLEM_GAP_HOURS = 6
+
+
+def send_problem(db: Optional[Db] = None, say: Callable = print, now: Optional[datetime] = None) -> None:
+    """Tell every registered device that the scan is failing. At most once every
+    few hours, so a broken evening does not mean a buzzing phone."""
+    db = db or Db()
+    now = now or datetime.now(timezone.utc)
+    push, telegram = WebPush(), Telegram()
+    since = (now - timedelta(hours=PROBLEM_GAP_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if db.select("notifications", "kind=eq.test&detail=like.problem*&sent_at=gte.%s&select=id&limit=1" % since):
+        return say("Problem alert already sent in the last %d hours." % PROBLEM_GAP_HOURS)
+    message = Message(kind="test", key="problem", title="StocksWatch: the scan is failing",
+                      body="The market scan did not finish, so alerts may be missed until it is fixed.",
+                      url="#/digest")
+    devices = db.select("push_subscriptions", "select=id,user_id,endpoint,keys") if push.ready else []
+    for device in devices:
+        outcome = push.send(device, message)
+        db.insert("notifications", [{"user_id": device["user_id"], "kind": "test", "channel": "web_push",
+                                     "status": "sent" if outcome == "ok" else "failed",
+                                     "detail": "problem|%s — %s [%s]" % (message.title, message.body, outcome)}])
+        say("Problem alert: %s" % outcome)
+    if telegram.ready:
+        say("Problem alert by Telegram: %s" % telegram.send(message))
+    if not devices and not telegram.ready:
+        say("Nowhere to send a problem alert.")
+

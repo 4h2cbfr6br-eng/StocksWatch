@@ -50,3 +50,22 @@ def test_series_rows_keep_the_latest_year_oldest_first():
     assert len(rows[0]["closes"]) == publish.SERIES_DAYS
     assert rows[0]["closes"][-1] == 300.0 and rows[0]["dates"][0] < rows[0]["dates"][-1]
     assert publish.series_rows(bars, {}, "x") == []
+
+
+def test_halts_feed_lists_only_stocks_still_halted():
+    from zoneinfo import ZoneInfo
+    from stockswatch import halts
+    def item(symbol, halt_time, resume_date="", resume_time="", day="11/16/2026"):
+        return ("<item><ndaq:HaltDate>%s</ndaq:HaltDate><ndaq:HaltTime>%s</ndaq:HaltTime>"
+                "<ndaq:IssueSymbol>%s</ndaq:IssueSymbol><ndaq:ReasonCode>LUDP</ndaq:ReasonCode>"
+                "<ndaq:ResumptionDate>%s</ndaq:ResumptionDate>"
+                "<ndaq:ResumptionTradeTime>%s</ndaq:ResumptionTradeTime></item>"
+                % (day, halt_time, symbol, resume_date, resume_time))
+    xml = ('﻿<?xml version="1.0"?><rss xmlns:ndaq="http://www.nasdaqtrader.com/"><channel>'
+           + item("STILL", "10:00:00")
+           + item("BACK", "10:00:00", "11/16/2026", "10:10:00")
+           + item("SOON", "10:20:00", "11/16/2026", "10:40:00")
+           + item("OLD", "10:00:00", day="11/13/2026")
+           + "</channel></rss>")
+    now = datetime(2026, 11, 16, 10, 30, tzinfo=ZoneInfo("America/New_York"))
+    assert halts.parse(xml, now) == {"STILL": "LUDP", "SOON": "LUDP"}

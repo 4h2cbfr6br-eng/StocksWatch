@@ -21,7 +21,7 @@
 **The three big decisions (detail later)**
 
 1. **Client:** an installable web app (PWA) with web push. It is the only option that puts notifications on your iPhone for £0.
-2. **Stack:** Python for the scanner and backtester, Supabase (hosted Postgres database + login) for data and accounts, a React web app hosted free on Cloudflare Pages. No server of your own until Phase 3.
+2. **Stack:** Python for the scanner and backtester, Supabase (hosted Postgres database + login) for data and accounts, a React web app hosted free on GitHub Pages (Cloudflare Pages was the original choice; see section 16). No server of your own until Phase 3.
 3. **Data:** Alpaca's free plan for US prices, Finnhub's free plan for news and key numbers, an unofficial Yahoo source for UK end-of-day. All on personal-use licences, which is the main thing that has to change before launch.
 
 ---
@@ -268,7 +268,7 @@ The target was 1-5 a day. Raising the % threshold helps less than raising the si
                                    │ Postgres + Auth +       │   row-level security
                                    │ automatic REST API      │
                                    └─────────────────────────┘
-                                     Frontend: React PWA on Cloudflare Pages
+                                     Frontend: React PWA on GitHub Pages
 ```
 
 ### 8.1 The pieces, in plain terms
@@ -282,7 +282,7 @@ The target was 1-5 a day. Raising the % threshold helps less than raising the si
 | Price history (time-series) | **Parquet files + DuckDB** | Millions of daily bars compress to a few hundred MB and query in milliseconds. No special time-series database needed |
 | API | Supabase's auto-generated REST API, guarded by row-level security | No custom server to write or host in the early phases |
 | Frontend | **React + Vite + TypeScript**, PWA plugin | Most widely supported; builds to static files |
-| Frontend hosting | **Cloudflare Pages** | Free, fast, and allows commercial use later (some rivals' free tiers do not) |
+| Frontend hosting | **GitHub Pages** for now (built); **Cloudflare Pages** before any commercial use | GitHub Pages needed no new account. It is not meant for commercial sites, so move before Phase 5 |
 | Push | Web Push (VAPID keys) sent from Python; service worker in the PWA | Free, no Apple account |
 | Monitoring | Each scan writes a `scan_runs` row; the site shows "last scan 3 min ago"; a free heartbeat service emails you if scans stop | Silent failure is the main risk for an alerts app |
 
@@ -324,7 +324,7 @@ Rules that prevent a rewrite later:
 ## 9. Accounts, security and GDPR
 
 **Auth**
-- Supabase Auth with email magic links (no passwords for you to store or leak). Add Sign in with Apple / Google at launch.
+- Supabase Auth with email magic links, plus a password for the iPhone Home Screen app, where emailed links cannot work (see section 16). Supabase stores the password hashed; the app never sees or keeps it. Add Sign in with Apple / Google at launch.
 - Phase 1 has exactly one account (yours); sign-ups switched off.
 
 **Security basics**
@@ -522,7 +522,7 @@ Effort assumes evenings and weekends around A-levels, with Claude Code writing t
 |---|---|---|
 | 1 | App name | **Decided: StocksWatch.** Only open point is a domain and trademark check before public launch |
 | 2 | Client type | **PWA now.** Revisit App Store at Phase 5 |
-| 3 | Stack | **Python + Supabase + React PWA on Cloudflare Pages** as in section 8 |
+| 3 | Stack | **Decided and built:** Python + Supabase + React PWA, hosted on GitHub Pages for now |
 | 4 | Public or private GitHub repo | **Public.** Unlimited free scheduled runs, and a visible project for university applications. Secrets stay in GitHub Secrets |
 | 5 | US data source | **Alpaca free**, with Massive (~$29/mo) as the fallback if the Phase 0 spike fails |
 | 6 | UK data source | **yfinance** for FTSE 350 end-of-day, personal use only. Move to EODHD ($19.99/mo) if it proves unreliable |
@@ -546,3 +546,57 @@ Effort assumes evenings and weekends around A-levels, with Claude Code writing t
 - iOS web push: https://firt.dev/notes/pwa-ios/ and https://www.mobiloud.com/blog/pwa-push-notifications
 - FCA perimeter guidance on advice: https://handbook.fca.org.uk/handbook/PERG/8/24.html and https://handbook.fca.org.uk/handbook/PERG/8/26.html
 - Supabase free-tier limits: https://www.itpathsolutions.com/supabase-free-tier-limits
+
+---
+
+## 16. What has been built (as of 16 Nov 2026)
+
+Phases 0, 1 and 2 are built and running. This section records where the build differs from the plan above, and what is still missing.
+
+**Where it runs**
+
+| Piece | Where |
+|---|---|
+| Code | Public GitHub repository `4h2cbfr6br-eng/StocksWatch`, branch `main` |
+| Scan, save, notify | GitHub Actions, every 5 minutes on weekdays, 13:00-21:59 UTC |
+| Web app | GitHub Pages: https://4h2cbfr6br-eng.github.io/StocksWatch/ |
+| Database and login | Supabase (new sign-ups switched off; one account) |
+| Keys | `.env` on the Mac and GitHub Secrets. Never in the code |
+
+**Differences from the plan**
+
+| Planned | Built | Why |
+|---|---|---|
+| Cloudflare Pages | GitHub Pages | The GitHub account already existed, so no new sign-up. Move before any commercial use |
+| Magic links only | Magic link, plus a password for the iPhone app | On an iPhone the link opens in Safari, which is separate from the Home Screen app, and previewing a link uses it up |
+| Market cap >= $2bn filter | Price >= $5 and >= $20m traded a day; **>= $250m a day for a phone push** | Decided from the backtest (section 7.1): the original rule fired far too often |
+| Nightly ingest job | The first scan of each day re-downloads 14 months of daily prices | One job instead of two; GitHub caches the download for the rest of the day |
+| Halt status from the price provider | Nasdaq Trader's public halts feed | Alpaca's free plan has no halt lookup |
+| Outside heartbeat service | A push to the phone if a scan fails (at most one every 6 hours) | No extra account. It cannot notice GitHub's timer stopping altogether; the front page's "last scan" time shows that |
+| Lightweight chart library | Chart drawn directly as SVG | No extra dependency |
+| Watchlist in `watchlist.csv` | Watchlist kept in the database and edited on the Settings page | The file is only used to fill an empty watchlist |
+
+**Checks an alert passes before it reaches the phone**
+
+1. The whole-market rule (section 4.2), or the user's own watchlist threshold.
+2. Not a fall beyond 60%, and not close to a common split ratio.
+3. Not explained by a share split or a cash payout of 2% or more (Alpaca corporate actions).
+4. Seen on two scans in a row, or the session has closed.
+5. Not currently halted.
+6. Today's prices only; one push per stock per day unless it reaches a worse tier.
+7. Within the daily cap and outside quiet hours; one push on a market-wide fall.
+
+**Not built yet**
+
+- Telegram backup and an outside heartbeat: the code is there, but they stay off until a bot token, chat id or heartbeat address is added as a GitHub Secret.
+- Gap-down and intraday-from-high rules, pre-market cards, live websocket prices (Phase 3).
+- UK shares beyond the ones on the watchlist; adding new UK shares from the app.
+- Second-source confirmation for Severe alerts.
+- Data export and account deletion in the app (Phase 4).
+- Sectors fill in at 15 stocks per scan, so the Sectors page takes two or three trading days to cover the market.
+
+**Unchanged constraints**
+
+- All data is on personal-use licences. No other users until that changes (section 3.3).
+- Wording stays factual: no "dip", "bargain", "opportunity", "cheap", "oversold" or "buy" (section 10). A test enforces this for notifications.
+

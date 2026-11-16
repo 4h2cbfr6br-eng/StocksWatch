@@ -162,13 +162,15 @@ def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now
     day = result.bar_date
     over = session_over(day, now)
     existing = {(a["instrument_id"], a["tier"]): a for a in db.select(
-        "alerts", "trading_date=eq.%s&select=id,instrument_id,tier,status,scans_seen" % day.isoformat())}
+        "alerts", "trading_date=eq.%s&select=id,instrument_id,tier,status,scans_seen,tags" % day.isoformat())}
+    from . import halts
+    halted = halts.current(now) if result.alerts else {}
     reporting = finnhub.get_earnings_symbols(day - timedelta(days=1), day) if result.alerts else set()
     results_today = {s for s, d, hour in reporting
                      if d == day.isoformat() and hour != "amc"            # before or during today's session
                      or d == (day - timedelta(days=1)).isoformat() and hour == "amc"}   # after yesterday's close
     rule_id = _rule_id(db)
-    counts = {"new": 0, "seen_again": 0, "held": 0}
+    counts = {"new": 0, "seen_again": 0, "held": 0, "halted": 0}
     fresh = [c for c in result.alerts if c.symbol in ids and (ids[c.symbol], c.tier) not in existing]
     events = _price_events([c.symbol for c in fresh], day)
 
@@ -182,8 +184,16 @@ def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now
         if old:
             # Seen on an earlier scan too: that is the "two scans in a row" confirmation.
             changes = dict(figures, scans_seen=old["scans_seen"] + 1)
-            if old["status"] == "pending":
-                changes.update(status="confirmed", confirmed_at=stamp)
+            tags = [t for t in (old.get("tags") or []) if t != "HALTED"]
+            if c.symbol in halted:
+                # Trading is paused: the price is frozen, so this is not a confirmation.
+                changes.update(tags=tags + ["HALTED"])
+                counts["halted"] += 1
+            else:
+                if tags != (old.get("tags") or []):
+                    changes.update(tags=tags)             # trading has resumed
+                if old["status"] == "pending":
+                    changes.update(status="confirmed", confirmed_at=stamp)
             db.update("alerts", "id=eq.%d" % old["id"], changes)
             counts["seen_again"] += 1
             continue
@@ -205,6 +215,10 @@ def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now
             tags.append("GAP DOWN")
         if c.symbol in results_today:
             tags.append("RESULTS DAY")
+        is_halted = c.symbol in halted
+        if is_halted:
+            tags.append("HALTED")
+            counts["halted"] += 1
 
         news: List[dict] = []
         if number < MAX_ENRICH:
@@ -217,7 +231,8 @@ def _publish_alerts(db: Db, result: scanner.ScanResult, ids: Dict[str, int], now
 
         db.insert("alerts", [dict(
             figures, instrument_id=iid, trading_date=day, rule_id=rule_id, tier=c.tier,
-            status="confirmed" if over else "pending", confirmed_at=stamp if over else None,
+            status="confirmed" if over and not is_halted else "pending",
+            confirmed_at=stamp if over and not is_halted else None,
             triggered_at=stamp, tags=tags, news=news, data_delay="15 min",
             headline=make_headline(c.name, c.pct, biggest_fall_since(c.symbol, c.pct, day)))])
         counts["new"] += 1
@@ -375,8 +390,8 @@ def publish(now: Optional[datetime] = None, say=print) -> None:
         say("Saved %d stocks" % len(ids))
         say("Saved %d quotes for %s" % (_publish_quotes(db, result, ids, stamp), result.bar_date))
         counts = _publish_alerts(db, result, ids, now, stamp)
-        say("Alerts: %d new, %d seen again, %d held back as a split or payout" % (
-            counts["new"], counts["seen_again"], counts["held"]))
+        say("Alerts: %d new, %d seen again, %d held back as a split or payout, %d halted" % (
+            counts["new"], counts["seen_again"], counts["held"], counts["halted"]))
         # These two use Yahoo, which is unofficial and sometimes refuses. A failure
         # here must not stop the alerts going out.
         try:

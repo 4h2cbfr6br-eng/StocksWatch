@@ -75,7 +75,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="stockswatch", description="Watchlist drop report")
     parser.add_argument("command", nargs="?", default="run",
                         choices=["run", "update", "report", "backtest-data", "backtest", "scan", "publish",
-                                 "refresh", "notify", "push-test"])
+                                 "refresh", "notify", "push-test", "notify-problem"])
     command = parser.parse_args().command
     if command == "scan":
         return do_scan()
@@ -86,6 +86,10 @@ def main() -> None:
     if command == "notify":
         from . import dispatcher
         dispatcher.dispatch()
+        return
+    if command == "notify-problem":
+        from . import dispatcher
+        dispatcher.send_problem()
         return
     if command == "push-test":
         from . import dispatcher
